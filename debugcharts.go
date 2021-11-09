@@ -193,11 +193,7 @@ func init() {
 	go S.gatherData()
 }
 
-type Router interface {
-	HandleFunc(string, f func(http.ResponseWriter, *http.Request)) *mux.Route
-}
-
-func CustomMuxInit(r *Router) {
+func CustomMuxInit(r *mux.Router) {
 	http.HandleFunc("/debug/charts/data-feed", S.dataFeedHandler)
 	http.HandleFunc("/debug/charts/data", dataHandler)
 	http.HandleFunc("/debug/charts/", handleAsset("static/index.html"))
