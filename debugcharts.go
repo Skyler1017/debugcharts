@@ -20,6 +20,11 @@ package debugcharts
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
+	"github.com/mkevac/debugcharts/bindata"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/process"
 	"log"
 	"net/http"
 	"os"
@@ -27,11 +32,6 @@ import (
 	"runtime/pprof"
 	"sync"
 	"time"
-
-	"github.com/gorilla/websocket"
-	"github.com/mkevac/debugcharts/bindata"
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/process"
 )
 
 type update struct {
@@ -93,7 +93,7 @@ var (
 	lastPause      uint32
 	mutex          sync.RWMutex
 	lastConsumerID uint
-	s              server
+	S              server
 	upgrader       = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
@@ -173,7 +173,7 @@ func (s *server) gatherData() {
 }
 
 func init() {
-	http.HandleFunc("/debug/charts/data-feed", s.dataFeedHandler)
+	http.HandleFunc("/debug/charts/data-feed", S.dataFeedHandler)
 	http.HandleFunc("/debug/charts/data", dataHandler)
 	http.HandleFunc("/debug/charts/", handleAsset("static/index.html"))
 	http.HandleFunc("/debug/charts/main.js", handleAsset("static/main.js"))
@@ -190,7 +190,32 @@ func init() {
 	data.CPUUsage = make([]CPUPair, 0, maxCount)
 	data.Pprof = make([]PprofPair, 0, maxCount)
 
-	go s.gatherData()
+	go S.gatherData()
+}
+
+type Router interface {
+	HandleFunc(string, f func(http.ResponseWriter, *http.Request)) *mux.Route
+}
+
+func CustomMuxInit(r *Router) {
+	http.HandleFunc("/debug/charts/data-feed", S.dataFeedHandler)
+	http.HandleFunc("/debug/charts/data", dataHandler)
+	http.HandleFunc("/debug/charts/", handleAsset("static/index.html"))
+	http.HandleFunc("/debug/charts/main.js", handleAsset("static/main.js"))
+	http.HandleFunc("/debug/charts/jquery-2.1.4.min.js", handleAsset("static/jquery-2.1.4.min.js"))
+	http.HandleFunc("/debug/charts/plotly-1.51.3.min.js", handleAsset("static/plotly-1.51.3.min.js"))
+	http.HandleFunc("/debug/charts/moment.min.js", handleAsset("static/moment.min.js"))
+
+	myProcess, _ = process.NewProcess(int32(os.Getpid()))
+
+	// preallocate arrays in data, helps save on reallocations caused by append()
+	// when maxCount is large
+	data.BytesAllocated = make([]SimplePair, 0, maxCount)
+	data.GcPauses = make([]SimplePair, 0, maxCount)
+	data.CPUUsage = make([]CPUPair, 0, maxCount)
+	data.Pprof = make([]PprofPair, 0, maxCount)
+
+	go S.gatherData()
 }
 
 func (s *server) sendToConsumers(u update) {
